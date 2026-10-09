@@ -1,4 +1,4 @@
-name: Build OVMF with AMD SEV support
+name: Build AMD OVMF firmware
 
 on:
   push:
@@ -9,9 +9,11 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
       id-token: write
       attestations: write
+    outputs:
+      release-notes: ${{ steps.generate-release-notes.outputs.release-notes }}
 
     steps:
       - name: Install dependencies
@@ -56,9 +58,79 @@ jobs:
           echo "${RELEASE_NOTES}" >> "$GITHUB_OUTPUT"
           echo "EOF" >> "$GITHUB_OUTPUT"
 
+      - name: Upload confidential firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: ovmf-cc
+          path: Build/AmdSev/DEBUG_GCC5/FV/OVMF.fd
+          if-no-files-found: error
+
+  build-noncc:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential uuid-dev iasl nasm gcc
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Create placeholder EFI file
+        run: |
+          touch OvmfPkg/AmdSev/Grub/grub.efi
+
+      - name: Setup EDK2 build environment
+        run: |
+          make -C BaseTools
+
+      - name: Build nonconfidential OVMF
+        run: |
+          . ./edksetup.sh --reconfig
+          build -q --cmd-len=64436 -DDEBUG_ON_SERIAL_PORT=TRUE -DNON_CC_BUILD=TRUE -n 32 -t GCC5 -a X64 -p OvmfPkg/AmdSev/AmdSevX64.dsc
+          cp Build/AmdSev/DEBUG_GCC5/FV/OVMF.fd Build/AmdSev/DEBUG_GCC5/FV/OVMF-noncc.fd
+
+      - name: Upload nonconfidential firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: ovmf-noncc
+          path: Build/AmdSev/DEBUG_GCC5/FV/OVMF-noncc.fd
+          if-no-files-found: error
+
+  release:
+    needs: [build, build-noncc]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download firmware artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: ovmf-*
+          path: release
+          merge-multiple: true
+
+      - name: Generate firmware checksums
+        working-directory: release
+        run: sha256sum OVMF.fd OVMF-noncc.fd > SHA256SUMS
+
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            Build/AmdSev/DEBUG_GCC5/FV/OVMF.fd
-          body: ${{ steps.generate-release-notes.outputs.release-notes }}
+            release/OVMF.fd
+            release/OVMF-noncc.fd
+            release/SHA256SUMS
+          fail_on_unmatched_files: true
+          body: |
+            ${{ needs.build.outputs.release-notes }}
+
+            `OVMF.fd` is the confidential firmware with SEV hash verification and a component-artifact attestation.
+            `OVMF-noncc.fd` is for nonconfidential guests and has no component-artifact attestation.
+            `SHA256SUMS` contains the SHA-256 digest of each firmware image.
