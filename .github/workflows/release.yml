@@ -1,4 +1,4 @@
-name: Build OVMF with AMD SEV support
+name: Build AMD OVMF firmware
 
 on:
   push:
@@ -9,18 +9,20 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
       id-token: write
       attestations: write
+    outputs:
+      release-notes: ${{ steps.generate-release-notes.outputs.release-notes }}
 
     steps:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential uuid-dev iasl nasm gcc
+          sudo apt-get install -y build-essential uuid-dev iasl nasm gcc python3-venv
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           submodules: recursive
 
@@ -30,6 +32,9 @@ jobs:
 
       - name: Setup EDK2 build environment
         run: |
+          python3 -m venv .venv
+          . .venv/bin/activate
+          echo "$VIRTUAL_ENV/bin" >> "$GITHUB_PATH"
           make -C BaseTools
 
       - name: Build OVMF
@@ -38,7 +43,7 @@ jobs:
           build -q --cmd-len=64436 -DDEBUG_ON_SERIAL_PORT=TRUE -n 32 -t GCC5 -a X64 -p OvmfPkg/AmdSev/AmdSevX64.dsc
 
       - name: Attest
-        uses: actions/attest@v1
+        uses: actions/attest@67422f5511b7ff725f4dbd6fb9bd2cd925c65a8d # v1.4.1
         id: attest
         with:
           subject-path: Build/AmdSev/DEBUG_GCC5/FV/OVMF.fd
@@ -56,9 +61,82 @@ jobs:
           echo "${RELEASE_NOTES}" >> "$GITHUB_OUTPUT"
           echo "EOF" >> "$GITHUB_OUTPUT"
 
+      - name: Upload confidential firmware
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ovmf-cc
+          path: Build/AmdSev/DEBUG_GCC5/FV/OVMF.fd
+          if-no-files-found: error
+
+  build-noncc:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential uuid-dev iasl nasm gcc python3-venv
+
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          submodules: recursive
+
+      - name: Create placeholder EFI file
+        run: |
+          touch OvmfPkg/AmdSev/Grub/grub.efi
+
+      - name: Setup EDK2 build environment
+        run: |
+          python3 -m venv .venv
+          . .venv/bin/activate
+          echo "$VIRTUAL_ENV/bin" >> "$GITHUB_PATH"
+          make -C BaseTools
+
+      - name: Build nonconfidential OVMF
+        run: |
+          . ./edksetup.sh --reconfig
+          build -q --cmd-len=64436 -DDEBUG_ON_SERIAL_PORT=TRUE -DNON_CC_BUILD=TRUE -n 32 -t GCC5 -a X64 -p OvmfPkg/AmdSev/AmdSevX64.dsc
+          cp Build/AmdSev/DEBUG_GCC5/FV/OVMF.fd Build/AmdSev/DEBUG_GCC5/FV/OVMF-noncc.fd
+
+      - name: Upload nonconfidential firmware
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ovmf-noncc
+          path: Build/AmdSev/DEBUG_GCC5/FV/OVMF-noncc.fd
+          if-no-files-found: error
+
+  release:
+    needs: [build, build-noncc]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download firmware artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: ovmf-*
+          path: release
+          merge-multiple: true
+
+      - name: Generate firmware checksums
+        working-directory: release
+        run: sha256sum OVMF.fd OVMF-noncc.fd > SHA256SUMS
+
       - name: Create release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           files: |
-            Build/AmdSev/DEBUG_GCC5/FV/OVMF.fd
-          body: ${{ steps.generate-release-notes.outputs.release-notes }}
+            release/OVMF.fd
+            release/OVMF-noncc.fd
+            release/SHA256SUMS
+          fail_on_unmatched_files: true
+          body: |
+            ${{ needs.build.outputs.release-notes }}
+
+            `OVMF.fd` is the confidential firmware with SEV hash verification and a component-artifact attestation.
+            `OVMF-noncc.fd` is for nonconfidential guests and has no component-artifact attestation.
+            `SHA256SUMS` contains the SHA-256 digest of each firmware image.
