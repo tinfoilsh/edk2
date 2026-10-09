@@ -76,10 +76,10 @@ jobs:
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
 
     - name: Install Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
       with:
         python-version: '3.11'
         cache: 'pip'
@@ -152,7 +152,7 @@ jobs:
       run: stuart_setup -c .pytool/CISettings.py -t DEBUG -a ${{ matrix.ArchList }} TOOL_CHAIN_TAG=VS2019
 
     - name: Upload Setup Log As An Artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
       if: (success() || failure()) && steps.get_ci_file_operations.outputs.setup_supported == 'true'
       with:
         name: ${{ matrix.Package }}-${{ steps.convert_arch_hyphen.outputs.arch_list }}-Setup-Log
@@ -166,7 +166,7 @@ jobs:
       run: stuart_ci_setup -c .pytool/CISettings.py -t DEBUG -a ${{ matrix.ArchList }} TOOL_CHAIN_TAG=VS2019
 
     - name: Upload CI Setup Log As An Artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
       if: (success() || failure()) && steps.get_ci_file_operations.outputs.ci_setup_supported == 'true'
       with:
         name: ${{ matrix.Package }}-${{ steps.convert_arch_hyphen.outputs.arch_list }}-CI-Setup-Log
@@ -179,7 +179,7 @@ jobs:
       run: stuart_update -c .pytool/CISettings.py -t DEBUG -a ${{ matrix.ArchList }} TOOL_CHAIN_TAG=VS2019
 
     - name: Upload Update Log As An Artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
       if: success() || failure()
       with:
         name: ${{ matrix.Package }}-${{ steps.convert_arch_hyphen.outputs.arch_list }}-Update-Log
@@ -239,7 +239,7 @@ jobs:
 
     - name: Attempt to Load CodeQL CLI From Cache
       id: codeqlcli_cache
-      uses: actions/cache@v4
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4
       with:
         path: ${{ steps.cache_key_gen.outputs.codeql_cli_ext_dep_dir }}
         key: ${{ steps.cache_key_gen.outputs.codeql_cli_cache_key }}
@@ -295,7 +295,7 @@ jobs:
         delete_dirs(build_path)
 
     - name: Upload Build Logs As An Artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
       if: success() || failure()
       with:
         name: ${{ matrix.Package }}-${{ steps.convert_arch_hyphen.outputs.arch_list }}-Build-Logs
@@ -340,7 +340,7 @@ jobs:
                 print(f'upload_sarif_file=false', file=fh)
 
     - name: Upload CodeQL Results (SARIF) As An Artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
       if: steps.env_data.outputs.upload_sarif_file == 'true'
       with:
         name: ${{ matrix.Package }}-${{ steps.convert_arch_hyphen.outputs.arch_list }}-CodeQL-SARIF
@@ -351,7 +351,7 @@ jobs:
         if-no-files-found: warn
 
     - name: Upload CodeQL Results (SARIF) To GitHub Code Scanning
-      uses: github/codeql-action/upload-sarif@v3
+      uses: github/codeql-action/upload-sarif@9f759ee644a3e7c15c1390abf49868036c00067b  # v3
       if: steps.env_data.outputs.upload_sarif_file == 'true'
       with:
         # Path to SARIF file relative to the root of the repository.
